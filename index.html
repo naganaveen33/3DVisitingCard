@@ -161,7 +161,7 @@
         // The MindAR target plane is 1 unit wide by default.
         // Scale the model so its largest horizontal dimension = 1 unit.
         const maxDim    = Math.max(size.x, size.y, size.z);
-        const fitScale  = 1 / maxDim;
+        const fitScale  = 1*8 / maxDim;
 
         model3D.setAttribute('scale', `${fitScale} ${fitScale} ${fitScale}`);
 
