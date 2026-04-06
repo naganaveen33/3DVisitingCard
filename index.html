@@ -14,10 +14,8 @@
 
       #scanOverlay {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
         background: rgba(0, 0, 0, 0.85);
         display: flex;
         flex-direction: column;
@@ -32,10 +30,7 @@
         pointer-events: none;
       }
 
-      .scan-container {
-        text-align: center;
-        max-width: 90%;
-      }
+      .scan-container { text-align: center; max-width: 90%; }
 
       .scan-title {
         color: white;
@@ -47,19 +42,17 @@
 
       .target-preview {
         position: relative;
-        width: 280px;
-        height: 280px;
+        width: 280px; height: 280px;
         margin: 0 auto 20px;
-        border: 3px solid rgba(255, 255, 255, 0.3);
+        border: 3px solid rgba(255,255,255,0.3);
         border-radius: 15px;
         overflow: hidden;
-        box-shadow: 0 0 30px rgba(255, 255, 255, 0.1);
-        background: rgba(255, 255, 255, 0.1);
+        box-shadow: 0 0 30px rgba(255,255,255,0.1);
+        background: rgba(255,255,255,0.1);
       }
 
       .target-image {
-        width: 100%;
-        height: 100%;
+        width: 100%; height: 100%;
         object-fit: contain;
         opacity: 0.4;
         filter: blur(1px);
@@ -67,32 +60,41 @@
 
       .scan-animation {
         position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 3px;
-        background: linear-gradient(90deg,
-          transparent 0%,
-          rgba(76, 175, 80, 0.8) 50%,
-          transparent 100%);
+        top: 0; left: 0;
+        width: 100%; height: 3px;
+        background: linear-gradient(90deg, transparent 0%, rgba(76,175,80,0.8) 50%, transparent 100%);
         animation: scan 2s ease-in-out infinite;
-        box-shadow: 0 0 20px rgba(76, 175, 80, 0.8);
+        box-shadow: 0 0 20px rgba(76,175,80,0.8);
       }
 
       @keyframes scan {
-        0%  { transform: translateY(0); }
-        50% { transform: translateY(277px); }
-        100%{ transform: translateY(0); }
+        0%   { transform: translateY(0); }
+        50%  { transform: translateY(277px); }
+        100% { transform: translateY(0); }
       }
 
       .scan-instruction {
-        color: rgba(255, 255, 255, 0.8);
+        color: rgba(255,255,255,0.8);
         font-size: 16px;
         margin-top: 20px;
+      }
+
+      #debugLog {
+        position: fixed;
+        top: 10px; left: 10px;
+        color: lime;
+        font-size: 13px;
+        z-index: 99999;
+        pointer-events: none;
+        text-shadow: 1px 1px 3px black;
+        max-width: 90%;
       }
     </style>
   </head>
   <body>
+
+    <!-- Debug log — remove the div once everything works -->
+    <div id="debugLog">Initializing...</div>
 
     <!-- Scan Overlay -->
     <div id="scanOverlay">
@@ -110,79 +112,113 @@
       mindar-image="imageTargetSrc: ./assets/targets.mind; filterMinCF: 0.0001; filterBeta: 0.001;"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: true"
-      renderer="colorManagement: true;">
+      renderer="colorManagement: true; physicallyCorrectLights: true;"
+      embedded>
 
-      <a-assets timeout="30000">
-        <!-- Preload the GLB model -->
+      <a-assets timeout="60000">
         <a-asset-item id="arModel" src="./assets/model.glb"></a-asset-item>
       </a-assets>
 
+      <!-- Lights so the GLB model is actually visible -->
+      <a-light type="ambient"     color="#ffffff" intensity="1.5"></a-light>
+      <a-light type="directional" color="#ffffff" intensity="1.0" position="1 2 1"></a-light>
+
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <!-- Attach 3D model to image target -->
       <a-entity mindar-image-target="targetIndex: 0">
         <!--
-          position: centered on target (0 0 0)
-          scale:    1 1 1 fits the model to ~1 A-Frame unit (≈ target width).
-                    Tweak the three values uniformly if the model appears too big/small.
-          rotation: -90 0 0  corrects the common "lying flat" GLB orientation.
-                    Remove or adjust if your model already stands upright.
+          The model starts at a safe scale of 0.1.
+          JavaScript below will resize it to fit the target once loaded.
+          If the model still appears lying flat after loading, change rotation to "-90 0 0".
         -->
         <a-gltf-model
           id="arModel3D"
           src="#arModel"
           position="0 0 0"
-          rotation="-90 0 0"
-          scale="1 1 1"
-          visible="false">
+          rotation="0 0 0"
+          scale="0.1 0.1 0.1">
         </a-gltf-model>
       </a-entity>
+
     </a-scene>
 
     <script>
+      const log = (msg) => {
+        document.getElementById('debugLog').innerText = msg;
+        console.log('[AR]', msg);
+      };
+
       const scanOverlay = document.getElementById('scanOverlay');
       const previewImg  = document.getElementById('previewImg');
-      const model3D     = document.getElementById('arModel3D');
+      const modelEl     = document.getElementById('arModel3D');
+      const targetEl    = document.querySelector('[mindar-image-target]');
+      const sceneEl     = document.querySelector('a-scene');
 
-      // Hide broken preview image gracefully
       previewImg.onerror = () => { previewImg.style.display = 'none'; };
 
-      // Auto-fit the model to the target image dimensions once loaded
-      model3D.addEventListener('model-loaded', () => {
-        const mesh = model3D.getObject3D('mesh');
-        if (!mesh) return;
+      // ── Fit model to target after load ──────────────────────────────────────
+      function fitModelToTarget() {
+        const mesh = modelEl.getObject3D('mesh');
+        if (!mesh) {
+          log('Mesh not ready yet, retrying...');
+          setTimeout(fitModelToTarget, 300);
+          return;
+        }
 
-        // Compute the bounding box of the loaded mesh
         const THREE = AFRAME.THREE;
-        const box   = new THREE.Box3().setFromObject(mesh);
-        const size  = new THREE.Vector3();
+        mesh.updateMatrixWorld(true);
+
+        const box  = new THREE.Box3().setFromObject(mesh);
+        const size = new THREE.Vector3();
         box.getSize(size);
 
-        // The MindAR target plane is 1 unit wide by default.
-        // Scale the model so its largest horizontal dimension = 1 unit.
-        const maxDim    = Math.max(size.x, size.y, size.z);
-        const fitScale  = 1*8 / maxDim;
+        log(`Mesh size → x:${size.x.toFixed(2)} y:${size.y.toFixed(2)} z:${size.z.toFixed(2)}`);
 
-        model3D.setAttribute('scale', `${fitScale} ${fitScale} ${fitScale}`);
+        // If bounding box is empty (some GLBs load lazily), retry
+        if (size.x === 0 && size.y === 0 && size.z === 0) {
+          log('Empty bbox — retrying in 300ms...');
+          setTimeout(fitModelToTarget, 300);
+          return;
+        }
 
-        // Re-center the model so its base sits on the target surface
-        box.setFromObject(mesh); // recompute after scale
+        // Scale so the largest dimension = 1 A-Frame unit (target image width)
+        const maxDim   = Math.max(size.x, size.y, size.z);
+        const fitScale = 1 / maxDim;
+
+        // Center the model on the target
         const center = new THREE.Vector3();
         box.getCenter(center);
-        model3D.setAttribute('position', `${-center.x * fitScale} ${-center.y * fitScale} 0`);
+
+        modelEl.setAttribute('scale',    `${fitScale} ${fitScale} ${fitScale}`);
+        modelEl.setAttribute('position', `${-center.x * fitScale} ${-center.y * fitScale} ${-center.z * fitScale}`);
+
+        log(`Model fitted. Scale: ${fitScale.toFixed(4)}`);
+      }
+
+      modelEl.addEventListener('model-loaded', () => {
+        log('model-loaded fired');
+        // Short delay to let A-Frame fully initialise the object3D tree
+        setTimeout(fitModelToTarget, 200);
       });
 
-      // Target found / lost
-      const targetEl = document.querySelector('[mindar-image-target]');
+      modelEl.addEventListener('model-error', (e) => {
+        log('ERROR: Could not load model.glb — check path/file');
+        console.error(e);
+      });
 
+      // ── MindAR events ───────────────────────────────────────────────────────
       targetEl.addEventListener('targetFound', () => {
+        log('✔ Target found!');
         scanOverlay.classList.add('hidden');
-        model3D.setAttribute('visible', 'true');
       });
 
       targetEl.addEventListener('targetLost', () => {
+        log('Target lost — scanning...');
         scanOverlay.classList.remove('hidden');
-        model3D.setAttribute('visible', 'false');
+      });
+
+      sceneEl.addEventListener('loaded', () => {
+        log('Scene ready — point camera at target image');
       });
     </script>
   </body>
