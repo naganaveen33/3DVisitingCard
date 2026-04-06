@@ -1,37 +1,24 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>WebAR 3D Model</title>
+    <title>WebAR 3D Model Demo</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <!-- Three.js -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
-    <!-- GLTFLoader -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/loaders/GLTFLoader.js"></script>
-    <!-- MindAR Three.js build (not A-Frame) -->
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
-
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <!-- aframe-extras adds animation-mixer support for GLB animations -->
+    <script src="https://cdn.jsdelivr.net/npm/aframe-extras@6.1.1/dist/aframe-extras.min.js"></script>
     <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-
-      html, body {
-        width: 100%; height: 100%;
+      body {
+        margin: 0;
         overflow: hidden;
-        background: #000;
         font-family: Arial, sans-serif;
-      }
-
-      #container {
-        position: fixed;
-        top: 0; left: 0;
-        width: 100%; height: 100%;
       }
 
       #scanOverlay {
         position: fixed;
         top: 0; left: 0;
         width: 100%; height: 100%;
-        background: rgba(0,0,0,0.85);
+        background: rgba(0, 0, 0, 0.85);
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -39,13 +26,16 @@
         z-index: 9999;
         transition: opacity 0.5s;
       }
+
       #scanOverlay.hidden {
         opacity: 0;
         pointer-events: none;
       }
 
+      .scan-container { text-align: center; max-width: 90%; }
+
       .scan-title {
-        color: #fff;
+        color: white;
         font-size: 24px;
         margin-bottom: 30px;
         font-weight: 300;
@@ -54,12 +44,13 @@
 
       .target-preview {
         position: relative;
-        width: 260px; height: 260px;
+        width: 280px; height: 280px;
         margin: 0 auto 20px;
         border: 3px solid rgba(255,255,255,0.3);
         border-radius: 15px;
         overflow: hidden;
-        background: rgba(255,255,255,0.08);
+        box-shadow: 0 0 30px rgba(255,255,255,0.1);
+        background: rgba(255,255,255,0.1);
       }
 
       .target-image {
@@ -69,18 +60,22 @@
         filter: blur(1px);
       }
 
-      .scan-line {
+      .scan-animation {
         position: absolute;
         top: 0; left: 0;
         width: 100%; height: 3px;
-        background: linear-gradient(90deg, transparent, rgba(76,175,80,0.9), transparent);
-        animation: scanMove 2s ease-in-out infinite;
+        background: linear-gradient(90deg,
+          transparent 0%,
+          rgba(76,175,80,0.8) 50%,
+          transparent 100%);
+        animation: scan 2s ease-in-out infinite;
         box-shadow: 0 0 20px rgba(76,175,80,0.8);
       }
-      @keyframes scanMove {
-        0%   { transform: translateY(0px); }
-        50%  { transform: translateY(257px); }
-        100% { transform: translateY(0px); }
+
+      @keyframes scan {
+        0%  { transform: translateY(0); }
+        50% { transform: translateY(277px); }
+        100%{ transform: translateY(0); }
       }
 
       .scan-instruction {
@@ -88,151 +83,98 @@
         font-size: 16px;
         margin-top: 20px;
       }
-
-      #status {
-        position: fixed;
-        bottom: 20px; left: 0; right: 0;
-        text-align: center;
-        color: lime;
-        font-size: 13px;
-        z-index: 99999;
-        pointer-events: none;
-        text-shadow: 0 0 6px #000;
-      }
     </style>
   </head>
   <body>
 
-    <!-- MindAR renders camera feed here -->
-    <div id="container"></div>
-
-    <!-- Scan overlay -->
+    <!-- Scan Overlay -->
     <div id="scanOverlay">
-      <div style="text-align:center; max-width:90%;">
+      <div class="scan-container">
         <h2 class="scan-title">Scan the Image</h2>
         <div class="target-preview">
-          <img src="./assets/target_image.jpg" class="target-image"
-               onerror="this.style.display='none'">
-          <div class="scan-line"></div>
+          <img id="previewImg" src="./assets/target_image.jpg" alt="Target" class="target-image">
+          <div class="scan-animation"></div>
         </div>
         <p class="scan-instruction">Point your camera at this image</p>
       </div>
     </div>
 
-    <div id="status">Loading AR...</div>
+    <a-scene
+      mindar-image="imageTargetSrc: ./assets/targets.mind; filterMinCF: 0.0001; filterBeta: 0.001;"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: true"
+      renderer="colorManagement: true; physicallyCorrectLights: true;">
+
+      <a-assets timeout="30000">
+        <!-- Preload the GLB model -->
+        <a-asset-item id="arModel" src="./assets/model.glb"></a-asset-item>
+      </a-assets>
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <!-- Lighting so the model renders correctly -->
+      <a-light type="ambient"     color="#ffffff" intensity="0.8"></a-light>
+      <a-light type="directional" color="#ffffff" intensity="1.2" position="1 2 1"></a-light>
+
+      <!-- 3D model anchored to the image target -->
+      <a-entity mindar-image-target="targetIndex: 0">
+        <a-gltf-model
+          id="arModelEntity"
+          src="#arModel"
+          position="0 0 0"
+          rotation="0 0 0"
+          scale="0.1 0.1 0.1"
+          animation-mixer="clip: *; loop: repeat"
+          visible="false">
+        </a-gltf-model>
+      </a-entity>
+
+    </a-scene>
 
     <script>
-      const statusEl    = document.getElementById('status');
       const scanOverlay = document.getElementById('scanOverlay');
+      const previewImg  = document.getElementById('previewImg');
+      const modelEntity = document.getElementById('arModelEntity');
+      const targetEl    = document.querySelector('[mindar-image-target]');
 
-      function setStatus(msg) {
-        statusEl.textContent = msg;
-        console.log('[AR]', msg);
-      }
+      // Hide broken preview image gracefully
+      previewImg.onerror = () => { previewImg.style.display = 'none'; };
 
-      async function startAR() {
-        setStatus('Setting up AR...');
+      // Auto-scale model to fit neatly over the target card (~0.8 units wide)
+      modelEntity.addEventListener('model-loaded', () => {
+        const mesh = modelEntity.getObject3D('mesh');
+        if (!mesh) return;
 
-        // ── MindAR ────────────────────────────────────────────────────────────
-        const mindarThree = new window.MINDAR.IMAGE.MindARThree({
-          container:       document.getElementById('container'),
-          imageTargetSrc:  './assets/targets.mind',
-          filterMinCF:     0.0001,
-          filterBeta:      0.001,
-          uiLoading:       'no',
-          uiScanning:      'no',
-          uiError:         'no',
-        });
+        const box  = new THREE.Box3().setFromObject(mesh);
+        const size = new THREE.Vector3();
+        box.getSize(size);
 
-        const { renderer, scene, camera } = mindarThree;
+        const maxDim = Math.max(size.x, size.y, size.z);
+        if (maxDim > 0) {
+          const targetSize = 0.8;          // world units; tweak to taste
+          const factor = targetSize / maxDim;
+          modelEntity.setAttribute('scale', `${factor} ${factor} ${factor}`);
+        }
+      });
 
-        // ── Lights ────────────────────────────────────────────────────────────
-        scene.add(new THREE.AmbientLight(0xffffff, 2));
+      // Target detected → show model
+      targetEl.addEventListener('targetFound', () => {
+        scanOverlay.classList.add('hidden');
+        modelEntity.setAttribute('visible', 'true');
 
-        const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
-        dirLight1.position.set(1, 2, 3);
-        scene.add(dirLight1);
+        // Resume built-in animations if any
+        const mixer = modelEntity.components['animation-mixer'];
+        if (mixer) mixer.play();
+      });
 
-        const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight2.position.set(-1, -1, -2);
-        scene.add(dirLight2);
+      // Target lost → hide model, show overlay
+      targetEl.addEventListener('targetLost', () => {
+        scanOverlay.classList.remove('hidden');
+        modelEntity.setAttribute('visible', 'false');
 
-        // ── Anchor (= image target) ───────────────────────────────────────────
-        const anchor = mindarThree.addAnchor(0);
-
-        // ── Load GLB ─────────────────────────────────────────────────────────
-        setStatus('Loading model...');
-
-        const loader = new THREE.GLTFLoader();
-
-        loader.load(
-          './assets/model.glb',
-
-          (gltf) => {
-            setStatus('Model loaded — fitting...');
-            const model = gltf.scene;
-
-            // Compute bounding box and fit to 1 unit (= target width)
-            const box    = new THREE.Box3().setFromObject(model);
-            const size   = new THREE.Vector3();
-            const center = new THREE.Vector3();
-            box.getSize(size);
-            box.getCenter(center);
-
-            const maxDim = Math.max(size.x, size.y, size.z);
-            const scale  = 1 / maxDim;
-
-            model.scale.setScalar(scale);
-
-            // Center horizontally, sit bottom on target plane
-            model.position.set(
-              -center.x * scale,
-              -center.y * scale + (size.y * scale) / 2,
-              -center.z * scale
-            );
-
-            anchor.group.add(model);
-            setStatus('Ready — point at target image');
-          },
-
-          (xhr) => {
-            const pct = xhr.total ? Math.round(xhr.loaded / xhr.total * 100) : '...';
-            setStatus(`Loading model: ${pct}%`);
-          },
-
-          (err) => {
-            setStatus('ERROR: model.glb failed to load');
-            console.error(err);
-          }
-        );
-
-        // ── Target found / lost ───────────────────────────────────────────────
-        anchor.onTargetFound = () => {
-          setStatus('Target found ✔');
-          scanOverlay.classList.add('hidden');
-        };
-
-        anchor.onTargetLost = () => {
-          setStatus('Scanning...');
-          scanOverlay.classList.remove('hidden');
-        };
-
-        // ── Start camera + tracking ───────────────────────────────────────────
-        setStatus('Starting camera...');
-        await mindarThree.start();
-        setStatus('Camera ready — point at target');
-
-        // ── Render loop ───────────────────────────────────────────────────────
-        renderer.setAnimationLoop(() => {
-          renderer.render(scene, camera);
-        });
-      }
-
-      startAR().catch((err) => {
-        setStatus('Failed to start AR: ' + err.message);
-        console.error(err);
+        const mixer = modelEntity.components['animation-mixer'];
+        if (mixer) mixer.pause();
       });
     </script>
-
   </body>
 </html>
