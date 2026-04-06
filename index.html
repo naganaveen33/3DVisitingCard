@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/aframe-extras@7.0.0/dist/aframe-extras.loaders.min.js"></script>
     <style>
       body {
         margin: 0;
@@ -111,90 +110,79 @@
       mindar-image="imageTargetSrc: ./assets/targets.mind; filterMinCF: 0.0001; filterBeta: 0.001;"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: true"
-      renderer="colorManagement: true; physicallyCorrectLights: true;">
+      renderer="colorManagement: true;">
 
       <a-assets timeout="30000">
+        <!-- Preload the GLB model -->
         <a-asset-item id="arModel" src="./assets/model.glb"></a-asset-item>
       </a-assets>
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <!-- Lighting -->
-      <a-light type="ambient"     color="#ffffff" intensity="0.6"></a-light>
-      <a-light type="directional" color="#ffffff" intensity="0.8" position="1 2 1"></a-light>
-
-      <!-- 3D model anchored to image target -->
+      <!-- Attach 3D model to image target -->
       <a-entity mindar-image-target="targetIndex: 0">
+        <!--
+          position: centered on target (0 0 0)
+          scale:    1 1 1 fits the model to ~1 A-Frame unit (≈ target width).
+                    Tweak the three values uniformly if the model appears too big/small.
+          rotation: -90 0 0  corrects the common "lying flat" GLB orientation.
+                    Remove or adjust if your model already stands upright.
+        -->
         <a-gltf-model
-          id="arModelEntity"
+          id="arModel3D"
           src="#arModel"
           position="0 0 0"
-          rotation="0 0 0"
-          visible="false"
-          animation-mixer>
+          rotation="-90 0 0"
+          scale="1 1 1"
+          visible="false">
         </a-gltf-model>
       </a-entity>
-
     </a-scene>
 
     <script>
       const scanOverlay = document.getElementById('scanOverlay');
       const previewImg  = document.getElementById('previewImg');
-      const modelEntity = document.getElementById('arModelEntity');
-      const targetEl    = document.querySelector('[mindar-image-target]');
+      const model3D     = document.getElementById('arModel3D');
 
       // Hide broken preview image gracefully
       previewImg.onerror = () => { previewImg.style.display = 'none'; };
 
-      // Auto-scale model to fit the target image dimensions once loaded
-      modelEntity.addEventListener('model-loaded', () => {
-        const obj = modelEntity.getObject3D('mesh');
-        if (!obj) return;
+      // Auto-fit the model to the target image dimensions once loaded
+      model3D.addEventListener('model-loaded', () => {
+        const mesh = model3D.getObject3D('mesh');
+        if (!mesh) return;
 
-        // Measure the model's real bounding box
-        const box  = new THREE.Box3().setFromObject(obj);
-        const size = new THREE.Vector3();
+        // Compute the bounding box of the loaded mesh
+        const THREE = AFRAME.THREE;
+        const box   = new THREE.Box3().setFromObject(mesh);
+        const size  = new THREE.Vector3();
         box.getSize(size);
 
-        // In MindAR, the target image is always 1 unit wide.
-        // Adjust targetHeight if your target is not square.
-        // e.g. for A4 portrait: targetHeight = 1 * (297 / 210)
-        const targetWidth  = 1;
-        const targetHeight = 1;
+        // The MindAR target plane is 1 unit wide by default.
+        // Scale the model so its largest horizontal dimension = 1 unit.
+        const maxDim    = Math.max(size.x, size.y, size.z);
+        const fitScale  = 1 / maxDim;
 
-        // Scale uniformly so the model fits inside the target (no clipping)
-        const scaleX = targetWidth  / size.x;
-        const scaleY = targetHeight / size.y;
-        const uniformScale = Math.min(scaleX, scaleY);
+        model3D.setAttribute('scale', `${fitScale} ${fitScale} ${fitScale}`);
 
-        modelEntity.setAttribute('scale', `${uniformScale} ${uniformScale} ${uniformScale}`);
-
-        // Re-center the model over the target origin
+        // Re-center the model so its base sits on the target surface
+        box.setFromObject(mesh); // recompute after scale
         const center = new THREE.Vector3();
         box.getCenter(center);
-        modelEntity.setAttribute(
-          'position',
-          `${-center.x * uniformScale} ${-center.y * uniformScale} 0`
-        );
-
-        console.log(`Model size  : ${size.x.toFixed(3)} x ${size.y.toFixed(3)} x ${size.z.toFixed(3)}`);
-        console.log(`Uniform scale applied: ${uniformScale.toFixed(4)}`);
+        model3D.setAttribute('position', `${-center.x * fitScale} ${-center.y * fitScale} 0`);
       });
 
-      // Target found — show model
+      // Target found / lost
+      const targetEl = document.querySelector('[mindar-image-target]');
+
       targetEl.addEventListener('targetFound', () => {
         scanOverlay.classList.add('hidden');
-        modelEntity.setAttribute('visible', 'true');
-
-        // Play built-in GLB animations if present
-        const mixer = modelEntity.components['animation-mixer'];
-        if (mixer) mixer.play();
+        model3D.setAttribute('visible', 'true');
       });
 
-      // Target lost — hide model
       targetEl.addEventListener('targetLost', () => {
         scanOverlay.classList.remove('hidden');
-        modelEntity.setAttribute('visible', 'false');
+        model3D.setAttribute('visible', 'false');
       });
     </script>
   </body>
